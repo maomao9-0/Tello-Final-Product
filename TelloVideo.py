@@ -4,13 +4,14 @@ import cv2
 import threading
 import sys
 import time
+import tensorflow
 
 class TelloVideo:
     
     ERROR_THRESHOLD = 3
     HOLD_TIME = 2
     
-    def __init__(self, tello, dist = 50, degree = 30):
+    def __init__(self, tello):
         self.tello = tello
         self.video_thread = threading.Thread(target = self._video_loop, args=())
         self.predict_thread = threading.Thread(target = self._predict_loop, args=())
