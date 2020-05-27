@@ -1,4 +1,4 @@
-from PIL import Image
+from PIL import Image, ImageOps
 import numpy as np
 import cv2
 import threading
@@ -62,13 +62,13 @@ class TelloVideo:
     def _tello_loop(self):
         self.tello.instruct("takeoff")
         while not self.has_stopped:
-            if pred_result == 1:
+            if self.pred_result == 1:
                 # raising hands
                 print("Someone is raising hands. Go help him!")
-            elif pred_result == 2:
+            elif self.pred_result == 2:
                 # neutral person
                 print("Someone does not need my help :(")
-            elif pred_result == 0:
+            elif self.pred_result == 0:
                 # background
                 print("Nice background :)")
             self.tello.instruct("cw 30")
@@ -87,7 +87,7 @@ class TelloVideo:
         prev_pred_result = -1
         error = 0
         size = (224, 224)
-        while self.stopApp == False and self.tello.in_video_mode:
+        while not self.stopApp and self.tello.in_video_mode:
             frame = self.tello.readframe()
             if frame is None or frame.size == 0:
                 continue
@@ -113,7 +113,7 @@ class TelloVideo:
                     prev_pred_time = time.time()
                 elif prev_pred_result != pred_result:
                     error += 1
-                    if (error > self.ERROR_THRESHOLD):
+                    if error > self.ERROR_THRESHOLD:
                         prev_pred_result = -1
                         prev_pred_time = time.time()
                 else:
@@ -124,7 +124,7 @@ class TelloVideo:
                         prev_pred_time = time.time()
             else:
                 error += 1
-                if (error > self.ERROR_THRESHOLD):
+                if error > self.ERROR_THRESHOLD:
                     prev_pred_result = -1
                     prev_pred_time = time.time()
 
