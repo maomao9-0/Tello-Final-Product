@@ -5,6 +5,7 @@ import threading
 import sys
 import time
 import tensorflow
+import os
 
 
 class TelloVideo:
