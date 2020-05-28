@@ -16,8 +16,8 @@ class TelloVideo:
     YOLO_THRESHOLD = 0.3
     MIN_HUMAN_WIDTH = 4
 
-    BLUE = [0, 0, 255]
-    RED = [255, 0, 0]
+    RED = [0, 0, 255]
+    BLUE = [255, 0, 0]
 
     def __init__(self, tello):
         self.tello = tello
@@ -38,7 +38,6 @@ class TelloVideo:
         self.data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
 
         # YOLO
-        labels_path = "yolo-coco/coco.names"
         # initialize a list of colors to represent each possible class label
         np.random.seed(42)
         # derive the paths to the YOLO weights and model configuration
@@ -223,7 +222,7 @@ class TelloVideo:
                         text = "TOO CLOSE!!"
                         cv2.putText(converted_image, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
 
-            cv2.imshow("TelloLiveview", converted_image)  # do not remove this line. Without this line that is no video.
+            cv2.imshow("Tello Live Camera", converted_image)  # do not remove this line. Without this line that is no video.
 
             # check if any key is pressed and what is the key. If no key pressed within 1 sec, it will return -1
             k = cv2.waitKey(1)
