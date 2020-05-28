@@ -24,9 +24,10 @@ class TelloVideo:
         self.video_thread = threading.Thread(target=self._video_loop, args=())
         self.predict_thread = threading.Thread(target=self._predict_loop, args=())
         self.tello_thread = threading.Thread(target=self._tello_loop, args=())
-        self.pred_result = -1
+        self.stop_turning = False
         self.has_stopped = False
 
+        '''
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
         # Disable scientific notation for clarity
         np.set_printoptions(suppress=True)
@@ -36,6 +37,7 @@ class TelloVideo:
         # The 'length' or number of images you can put into the array is
         # determined by the first position in the shape tuple, in this case 1.
         self.data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
+        '''
 
         # YOLO
         # initialize a list of colors to represent each possible class label
@@ -68,32 +70,75 @@ class TelloVideo:
             print("Unable to connect to drone camera!")
             return
 
+        cv2.startWindowThread()
+        cv2.namedWindow("Tello Live View")
+
         while not self.has_stopped:
             frame = self.tello.readframe()
             if frame is None or frame.size == 0:
                 continue
             image = Image.fromarray(frame)
-            cvt_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-            cv2.imshow("Tello Live View", cvt_image)
+            converted_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+            cv2.imshow("Tello Live View", converted_image)
             cv2.waitKey(1)
 
-    def _tello_loop(self):
-        self.tello.instruct("takeoff")
-        while not self.has_stopped:
-            if self.pred_result == 1:
-                # raising hands
-                print("Someone is raising hands. Go help him!")
-            elif self.pred_result == 2:
-                # neutral person
-                print("Someone does not need my help :(")
-            elif self.pred_result == 0:
-                # background
-                print("Nice background :)")
-            self.tello.instruct("cw 30")
-            time.sleep(1)
-        self.tello.instruct("land")
+            # apply non-maxima suppression to suppress weak, overlapping
+            # bounding boxes
+            idxs = cv2.dnn.NMSBoxes(self.boxes, self.confidences, self.YOLO_CONFIDENCE, self.YOLO_THRESHOLD)
 
-    def _pred_loop(self):
+            if len(idxs) > 0:
+                idxs = idxs.flatten()
+                print(idxs)
+
+                is_too_close = [False] * len(idxs)
+                for i in range(len(idxs)):
+                    for j in range(i + 1, len(idxs)):
+                        idx1 = idxs[i]
+                        (x1, y1) = (self.boxes[idx1][0], self.boxes[idx1][1])
+                        (w1, h1) = (self.boxes[idx1][2], self.boxes[idx1][3])
+                        idx2 = idxs[j]
+                        (x2, y2) = (self.boxes[idx2][0], self.boxes[idx2][1])
+                        (w2, h2) = (self.boxes[idx2][2], self.boxes[idx2][3])
+                        ave_w = (w1 + w2) / 2
+                        dist = ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+                        if dist < ave_w * self.MIN_HUMAN_WIDTH:
+                            is_too_close[i] = True
+                            is_too_close[j] = True
+
+                # loop over the indexes we are keeping
+                for i in range(len(idxs)):
+                    idx = idxs[i]
+                    # extract the bounding box coordinates
+                    (x, y) = (self.boxes[idx][0], self.boxes[idx][1])
+                    (w, h) = (self.boxes[idx][2], self.boxes[idx][3])
+                    # draw a bounding box rectangle and label on the frame
+                    color = self.RED if is_too_close[i] else self.BLUE
+
+                    cv2.rectangle(converted_image, (x, y), (x + w, y + h), color, 2)
+                    if is_too_close[i]:
+                        text = "TOO CLOSE!!"
+                        cv2.putText(converted_image, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+            cv2.imshow("Tello Live Camera", converted_image)  # do not remove this line. Without this line that is no video.
+
+            # check if any key is pressed and what is the key. If no key pressed within 1 sec, it will return -1
+            k = cv2.waitKey(1)
+
+            if 'q' == chr(k & 255):
+                self._close()
+
+    def _tello_loop(self):
+        # self.tello.instruct("takeoff")
+        # self.tello.instruct("battery?")
+        while not self.has_stopped:
+            if not self.stop_turning:
+                # self.tello.instruct("cw 30")
+                print("Turn")
+                time.sleep(1)
+        # self.tello.instruct("land")
+
+    def _predict_loop(self):
+        self.tello.video_mode_on()
         for i in range(20):
             if self.tello.in_video_mode:
                 break
@@ -101,15 +146,19 @@ class TelloVideo:
         if not self.tello.in_video_mode:
             print("Unable to connect to drone camera!")
             return
+
         prev_pred_time = time.time()
         prev_pred_result = -1
+        confident_pred_result = -1
         error = 0
         size = (224, 224)
-        while not self.stopApp and self.tello.in_video_mode:
+        while not self.has_stopped and self.tello.in_video_mode:
+            time.sleep(1)
             frame = self.tello.readframe()
             if frame is None or frame.size == 0:
                 continue
             image = Image.fromarray(frame)
+            '''
             resized_image = ImageOps.fit(image, size, Image.ANTIALIAS)
 
             image_array = np.asarray(resized_image)
@@ -137,7 +186,7 @@ class TelloVideo:
                 else:
                     error = 0
                     if time.time() - prev_pred_time > self.POSE_TIME:
-                        self.pred_result = pred_result
+                        confident_pred_result = pred_result
                         prev_pred_result = -1
                         prev_pred_time = time.time()
             else:
@@ -145,9 +194,10 @@ class TelloVideo:
                 if error > self.POSE_THRESHOLD:
                     prev_pred_result = -1
                     prev_pred_time = time.time()
+            '''
 
             # YOLO
-            converted_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            converted_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
             (H, W, C) = converted_image.shape
             # construct a blob from the input frame and then perform a forward
             # pass of the YOLO object detector, giving us our bounding boxes
@@ -157,9 +207,8 @@ class TelloVideo:
             layer_outputs = self.net.forward(self.layer_names)
             # initialize our lists of detected bounding boxes, confidences,
             # and class IDs, respectively
-            boxes = []
-            confidences = []
-            class_ids = []
+            self.boxes = []
+            self.confidences = []
 
             for output in layer_outputs:
                 for detection in output:
@@ -185,50 +234,9 @@ class TelloVideo:
                         y = int(centerY - (height / 2))
                         # update our list of bounding box coordinates,
                         # confidences, and class IDs
-                        boxes.append([x, y, int(width), int(height)])
-                        confidences.append(float(confidence))
-                        class_ids.append(class_id)
+                        self.boxes.append([x, y, int(width), int(height)])
+                        self.confidences.append(float(confidence))
 
-                # apply non-maxima suppression to suppress weak, overlapping
-                # bounding boxes
-                idxs = cv2.dnn.NMSBoxes(boxes, confidences, self.YOLO_CONFIDENCE, self.YOLO_THRESHOLD).flatten()
-
-                is_too_close = [False] * len(idxs)
-                for i in range(len(idxs)):
-                    for j in range(i + 1, len(idxs)):
-                        idx1 = idxs[i]
-                        (x1, y1) = (boxes[idx1][0], boxes[idx1][1])
-                        (w1, h1) = (boxes[idx1][2], boxes[idx1][3])
-                        idx2 = idxs[j]
-                        (x2, y2) = (boxes[idx2][0], boxes[idx2][1])
-                        (w2, h2) = (boxes[idx2][2], boxes[idx2][3])
-                        ave_w = (w1 + w2) / 2
-                        dist = ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
-                        if dist < ave_w * self.MIN_HUMAN_WIDTH:
-                            is_too_close[i] = True
-                            is_too_close[j] = True
-
-                # loop over the indexes we are keeping
-                for i in range(len(idxs)):
-                    idx = idxs[i]
-                    # extract the bounding box coordinates
-                    (x, y) = (boxes[idx][0], boxes[idx][1])
-                    (w, h) = (boxes[idx][2], boxes[idx][3])
-                    # draw a bounding box rectangle and label on the frame
-                    color = self.RED if is_too_close[i] else self.BLUE
-
-                    cv2.rectangle(converted_image, (x, y), (x + w, y + h), color, 2)
-                    if is_too_close[i]:
-                        text = "TOO CLOSE!!"
-                        cv2.putText(converted_image, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-
-            cv2.imshow("Tello Live Camera", converted_image)  # do not remove this line. Without this line that is no video.
-
-            # check if any key is pressed and what is the key. If no key pressed within 1 sec, it will return -1
-            k = cv2.waitKey(1)
-
-            if 'q' == chr(k & 255):
-                self._close()
 
     def _close(self):
         self.has_stopped = True
