@@ -1,11 +1,9 @@
-from PIL import Image, ImageOps
+from PIL import Image
 import numpy as np
 import cv2
 import threading
 import sys
 import time
-import tensorflow
-import os
 
 
 class TelloVideo:
@@ -14,7 +12,7 @@ class TelloVideo:
     POSE_CONFIDENCE = 0.8
     YOLO_CONFIDENCE = 0.6
     YOLO_THRESHOLD = 0.3
-    MIN_HUMAN_WIDTH = 4
+    MIN_HUMAN_WIDTH = 3
 
     RED = [0, 0, 255]
     BLUE = [255, 0, 0]
@@ -26,18 +24,6 @@ class TelloVideo:
         self.tello_thread = threading.Thread(target=self._tello_loop, args=())
         self.stop_turning = False
         self.has_stopped = False
-
-        '''
-        os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
-        # Disable scientific notation for clarity
-        np.set_printoptions(suppress=True)
-        # Load the model
-        self.model = tensorflow.keras.models.load_model('keras_model.h5')
-        # Create the array of the right shape to feed into the keras model
-        # The 'length' or number of images you can put into the array is
-        # determined by the first position in the shape tuple, in this case 1.
-        self.data = np.ndarray(shape=(1, 224, 224, 3), dtype=np.float32)
-        '''
 
         # YOLO
         # initialize a list of colors to represent each possible class label
@@ -86,6 +72,8 @@ class TelloVideo:
             # bounding boxes
             idxs = cv2.dnn.NMSBoxes(self.boxes, self.confidences, self.YOLO_CONFIDENCE, self.YOLO_THRESHOLD)
 
+            self.stop_turning = False
+
             if len(idxs) > 0:
                 idxs = idxs.flatten()
                 print(idxs)
@@ -118,6 +106,7 @@ class TelloVideo:
                     if is_too_close[i]:
                         text = "TOO CLOSE!!"
                         cv2.putText(converted_image, text, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                        self.stop_turning = True
 
             cv2.imshow("Tello Live Camera", converted_image)  # do not remove this line. Without this line that is no video.
 
@@ -131,9 +120,9 @@ class TelloVideo:
         # self.tello.instruct("takeoff")
         # self.tello.instruct("battery?")
         while not self.has_stopped:
-            if not self.stop_turning:
+            if self.stop_turning:
                 # self.tello.instruct("cw 30")
-                print("Turn")
+                print("Stop turning")
                 time.sleep(1)
         # self.tello.instruct("land")
 
@@ -147,54 +136,12 @@ class TelloVideo:
             print("Unable to connect to drone camera!")
             return
 
-        prev_pred_time = time.time()
-        prev_pred_result = -1
-        confident_pred_result = -1
-        error = 0
-        size = (224, 224)
         while not self.has_stopped and self.tello.in_video_mode:
             time.sleep(1)
             frame = self.tello.readframe()
             if frame is None or frame.size == 0:
                 continue
             image = Image.fromarray(frame)
-            '''
-            resized_image = ImageOps.fit(image, size, Image.ANTIALIAS)
-
-            image_array = np.asarray(resized_image)
-
-            # Normalize the image
-            normalized_image_array = (image_array.astype(np.float32) / 127.0) - 1
-            # Load the image into the array
-            self.data[0] = normalized_image_array
-            # run the inference
-            prediction = self.model.predict(self.data)
-            # print(prediction)
-            # prediction is a numpy array of confidence level of the 3 classes [[0.1,0.2,0.7]]
-
-            pred_result = np.argmax(prediction)
-
-            if prediction[pred_result] > self.POSE_CONFIDENCE:
-                if prev_pred_result == -1:
-                    prev_pred_result = pred_result
-                    prev_pred_time = time.time()
-                elif prev_pred_result != pred_result:
-                    error += 1
-                    if error > self.POSE_THRESHOLD:
-                        prev_pred_result = -1
-                        prev_pred_time = time.time()
-                else:
-                    error = 0
-                    if time.time() - prev_pred_time > self.POSE_TIME:
-                        confident_pred_result = pred_result
-                        prev_pred_result = -1
-                        prev_pred_time = time.time()
-            else:
-                error += 1
-                if error > self.POSE_THRESHOLD:
-                    prev_pred_result = -1
-                    prev_pred_time = time.time()
-            '''
 
             # YOLO
             converted_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -236,7 +183,6 @@ class TelloVideo:
                         # confidences, and class IDs
                         self.boxes.append([x, y, int(width), int(height)])
                         self.confidences.append(float(confidence))
-
 
     def _close(self):
         self.has_stopped = True
