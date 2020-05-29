@@ -8,8 +8,6 @@ import tensorflow
 import os
 from tellopose import Tello_Pose
 
-# test TeachableMachine
-
 
 class TelloVideo:
     POSE_THRESHOLD = 3
