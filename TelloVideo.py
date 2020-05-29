@@ -6,7 +6,6 @@ import sys
 import time
 import tensorflow
 import os
-from tellopose import Tello_Pose
 
 
 class TelloVideo:
@@ -31,12 +30,6 @@ class TelloVideo:
         self.boxes = []
         self.confidences = []
         self.is_raising_hand = []
-
-        self.tello_pose = Tello_Pose()
-
-        # list of all the possible connections between skeleton nodes
-        self.POSE_PAIRS = [[0, 1], [1, 2], [2, 3], [3, 4], [1, 5], [5, 6], [6, 7], [1, 14], [14, 8], [8, 9], [9, 10],
-                           [14, 11], [11, 12], [12, 13]]
 
         os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
         # Disable scientific notation for clarity
